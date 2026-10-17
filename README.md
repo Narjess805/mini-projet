@@ -1,27 +1,79 @@
-#  Mini-projet 1 : Déployer une application web à deux niveaux (Kubernetes / K3s)
+<div align="center">
 
-![Kubernetes](https://img.shields.io/badge/Kubernetes-v1.36.5-blue?logo=kubernetes)
-![K3s](https://img.shields.io/badge/K3s-Lightweight-orange?logo=rancher)
-![Traefik](https://img.shields.io/badge/Ingress-Traefik-24A1C1?logo=traefik)
+# Mini-projet 1 : Application web à deux niveaux sur Kubernetes (K3s)
 
-##  Contexte du projet
-Ce dépôt contient les manifestes YAML et la documentation du **Mini-projet 1**. 
-L'objectif est de déployer une application à deux niveaux (un frontend et une API) sur un cluster Kubernetes (K3s), de les faire communiquer en interne, de les exposer à l'extérieur via un Ingress, et de démontrer une mise à jour sans coupure ainsi qu'un diagnostic de panne.
+Déploiement, exposition via Ingress, mise à jour sans coupure et diagnostic de panne
 
-## Architecture cible
-- **Frontend** : Nginx (2 réplicas)
-- **API** : Podinfo (3 réplicas)
-- **Routage** : Ingress (Traefik) sur `web.k3s.local` et `api.k3s.local`
-- **Namespace** : `projet-narjess`
+![Kubernetes](https://img.shields.io/badge/Kubernetes-K3s-326CE5?logo=kubernetes&logoColor=white)
+![K3s](https://img.shields.io/badge/K3s-Lightweight-FFC61C?logo=rancher&logoColor=black)
+![Traefik](https://img.shields.io/badge/Ingress-Traefik-24A1C1?logo=traefikproxy&logoColor=white)
+![Nginx](https://img.shields.io/badge/Frontend-Nginx-009639?logo=nginx&logoColor=white)
+![Status](https://img.shields.io/badge/Statut-Termin%C3%A9-success)
 
-##  Structure du dépôt
+</div>
+
+---
+
+## Table des matières
+
+1. [Contexte et objectifs](#1-contexte-et-objectifs)
+2. [Architecture](#2-architecture)
+3. [Structure du dépôt](#3-structure-du-dépôt)
+4. [Prérequis](#4-prérequis)
+5. [Guide de déploiement](#5-guide-de-déploiement)
+6. [Preuves d'exécution](#6-preuves-dexécution)
+7. [Questions de réflexion](#7-questions-de-réflexion)
+8. [Difficultés rencontrées](#8-difficultés-rencontrées)
+9. [Nettoyage](#9-nettoyage)
+10. [Auteur](#10-auteur)
+
+---
+
+## 1. Contexte et objectifs
+
+Ce dépôt contient les manifestes YAML et la documentation du **Mini-projet 1**.
+
+L'objectif est de déployer une application à deux niveaux (un frontend et une API) sur un cluster Kubernetes léger (K3s) et de :
+
+- faire communiquer les deux composants **en interne** via des Services ;
+- les **exposer à l'extérieur** grâce à un Ingress Traefik ;
+- démontrer une **mise à jour sans coupure** (Rolling Update) ;
+- réaliser un **diagnostic de panne** (`ImagePullBackOff`).
+
+## 2. Architecture
+
+| Composant | Technologie | Réplicas | Service |
+|-----------|-------------|:--------:|---------|
+| Frontend  | Nginx       | 2        | `frontend-svc` (ClusterIP) |
+| API       | Podinfo     | 3        | `api-svc` (ClusterIP) |
+| Routage   | Ingress Traefik | n/a  | `web.k3s.local` et `api.k3s.local` |
+
+**Namespace** : `projet-narjess`
+
+```mermaid
+flowchart LR
+    U([Client]) -->|web.k3s.local| I{{Ingress Traefik}}
+    U -->|api.k3s.local| I
+    I --> FS[frontend-svc]
+    I --> AS[api-svc]
+    FS --> F1[Nginx Pod 1]
+    FS --> F2[Nginx Pod 2]
+    AS --> A1[Podinfo Pod 1]
+    AS --> A2[Podinfo Pod 2]
+    AS --> A3[Podinfo Pod 3]
+    F1 -.->|api-svc:9898| AS
+    F2 -.->|api-svc:9898| AS
+```
+
+## 3. Structure du dépôt
+
 ```text
 .
-├── README.md                      # Ce fichier
+├── README.md                      # Documentation du projet
 ├── manifests/                     # Manifestes Kubernetes
 │   ├── api-deployment.yaml        # Deployment de l'API (Podinfo)
 │   ├── frontend-deployment.yaml   # Deployment du Frontend (Nginx)
-│   ├── services.yaml              # Services ClusterIP (api-svc et frontend-svc)
+│   ├── services.yaml              # Services ClusterIP (api-svc, frontend-svc)
 │   └── ingress.yaml               # Ingress pour l'accès externe
 └── captures/                      # Captures d'écran du projet
     ├── 00_namespace.png
@@ -32,116 +84,192 @@ L'objectif est de déployer une application à deux niveaux (un frontend et une 
     ├── 05_rolling_update.png
     ├── 06_diagnostic.png
     └── 07_nettoyage.png
- Guide de déploiement
-1. Prérequis
-Un cluster K3s fonctionnel (au moins 1 master et 1 worker).
+```
 
-kubectl configuré sur votre machine.
+## 4. Prérequis
 
-Traefik installé (inclus par défaut avec K3s).
+- Un cluster **K3s** fonctionnel (au moins 1 master et 1 worker)
+- `kubectl` configuré sur votre machine
+- **Traefik** installé (inclus par défaut avec K3s)
 
-2. Déployer l'application
-Toutes les ressources sont décrites dans le dossier manifests/. Pour tout déployer d'un coup, exécutez la commande suivante depuis la racine du dépôt :
+## 5. Guide de déploiement
 
-bash
+### 5.1 Déployer l'application
+
+Depuis la racine du dépôt :
+
+```bash
 kubectl create namespace projet-narjess
 kubectl config set-context --current --namespace=projet-narjess
 kubectl apply -f manifests/
-3. Vérifier le déploiement
-Vérifiez que tous les Pods sont en Running :
+```
 
-bash
+### 5.2 Vérifier le déploiement
+
+```bash
+# Pods en état Running et nœuds d'exécution
 kubectl get pods -o wide
-Vérifiez que les Services sont bien créés avec leurs endpoints :
 
-bash
+# Services et endpoints associés
 kubectl get services
 kubectl get endpoints
-Vérifiez que l'Ingress a bien récupéré une adresse IP :
 
-bash
+# Ingress et adresse attribuée
 kubectl get ingress
-4. Tester l'accès externe
-Ajoutez l'IP de votre nœud master dans le fichier hosts de votre machine :
+```
 
-text
+### 5.3 Tester l'accès externe
+
+Ajoutez l'IP du nœud master dans le fichier `hosts` de votre machine :
+
+```text
 192.168.56.20  web.k3s.local api.k3s.local
-Accédez aux applications depuis votre navigateur ou avec curl :
+```
 
-Frontend : http://web.k3s.local
+| Système | Emplacement du fichier `hosts` |
+|---------|--------------------------------|
+| Linux / macOS | `/etc/hosts` |
+| Windows | `C:\Windows\System32\drivers\etc\hosts` (éditeur lancé en administrateur) |
 
-API : http://api.k3s.local
+Puis accédez aux applications :
 
-📸 Preuves d'exécution (Captures)
-1. Création du Namespace
-https://./captures/00_namespace.png
+| Application | URL |
+|-------------|-----|
+| Frontend | http://web.k3s.local |
+| API | http://api.k3s.local |
 
-2. Déploiement de l'API (3 réplicas)
-https://./captures/01_api_pods.png
+```bash
+curl http://web.k3s.local
+curl http://api.k3s.local
+```
 
-3. Déploiement du Frontend (2 réplicas)
-https://./captures/02_frontend_pods.png
+### 5.4 Mise à jour sans coupure et rollback
 
-4. Communication interne (Frontend -> API)
-https://./captures/03_services_communication.png
+```bash
+# Mise à jour de l'image (remplacer <nouveau-tag>)
+kubectl set image deployment/<nom-deployment> <conteneur>=<image>:<nouveau-tag>
 
-5. Exposition avec Ingress
-https://./captures/04_ingress.png
+# Suivi de la mise à jour
+kubectl rollout status deployment/<nom-deployment>
 
-6. Mise à jour sans coupure (Rolling Update)
-https://./captures/05_rolling_update.png
+# Historique et ReplicaSets
+kubectl rollout history deployment/<nom-deployment>
+kubectl get rs
 
-7. Diagnostic de panne
-https://./captures/06_diagnostic.png
+# Retour arrière si nécessaire
+kubectl rollout undo deployment/<nom-deployment>
+```
 
-8. Nettoyage
-https://./captures/07_nettoyage.png
+### 5.5 Diagnostic d'une panne
 
-🧠 Réponses aux questions de réflexion
-Étape 0 : Pourquoi isoler un projet dans un namespace ?
+```bash
+kubectl get pods
+kubectl describe pod <nom-du-pod>
+kubectl get events --sort-by=.metadata.creationTimestamp
+kubectl logs <nom-du-pod>
+```
 
-Le namespace permet d'isoler les ressources (Pods, Services, etc.) pour éviter les conflits de noms, faciliter la gestion des droits (RBAC) et cibler les commandes plus facilement.
+## 6. Preuves d'exécution
 
-Étape 1 : Sur quels nœuds les Pods sont-ils répartis, et qui a pris cette décision ?
+### 6.1 Création du Namespace
 
-Les Pods sont répartis sur les différents nœuds (Master/Workers). C'est le Scheduler de Kubernetes qui prend cette décision en fonction des ressources disponibles et des contraintes.
+![Création du namespace](captures/00_namespace.png)
 
-Étape 2 : Que se passerait-il si les deux Deployments utilisaient exactement les mêmes labels ?
+### 6.2 Déploiement de l'API (3 réplicas)
 
-Les Services (et l'Ingress) ne sauraient plus quel Pod cibler. Un Service frontend-svc risquerait d'envoyer du trafic vers l'API (et inversement), créant un dysfonctionnement total.
+![Pods de l'API](captures/01_api_pods.png)
 
-Étape 3 : Quel est le nom DNS complet d'un Service ?
+### 6.3 Déploiement du Frontend (2 réplicas)
 
-Le nom DNS complet (FQDN) est de la forme : <nom-du-service>.<nom-du-namespace>.svc.cluster.local. Exemple : api-svc.projet-narjess.svc.cluster.local.
+![Pods du Frontend](captures/02_frontend_pods.png)
 
-Étape 4 : Pourquoi préfère-t-on un Ingress à deux Services de type NodePort ?
+### 6.4 Communication interne (Frontend vers API)
 
-L'Ingress offre un point d'entrée unique (ports 80/443) avec routage par nom d'hôte et par chemin. Les NodePort nécessitent d'ouvrir un port différent pour chaque application, ce qui est moins sécurisé et moins lisible.
+![Communication entre services](captures/03_services_communication.png)
 
-Étape 5 : Combien de ReplicaSets existent après la mise à jour, et pourquoi l'ancien est-il conservé ?
+### 6.5 Exposition avec Ingress
 
-Il y a 2 ReplicaSets (un ancien à 0 réplicas, un nouveau à 3 réplicas). L'ancien est conservé pour permettre un rollback rapide (kubectl rollout undo) en cas de problème avec la nouvelle version.
+![Ingress Traefik](captures/04_ingress.png)
 
-Étape 6 : Quels symptômes vous ont mis sur la piste, et quelle est la cause racine ?
+### 6.6 Mise à jour sans coupure (Rolling Update)
 
-Symptômes : Les Pods restent en ImagePullBackOff/ErrImagePull.
+![Rolling Update](captures/05_rolling_update.png)
 
-Cause racine : Le tag de l'image spécifié dans le manifeste n'existe pas sur le registre (GHCR). Kubernetes ne peut donc pas la télécharger.
+### 6.7 Diagnostic de panne
 
-⚠️ Difficultés rencontrées
-Erreur de label : Si les labels des Services ne correspondent pas à ceux des Deployments, les endpoints restent à <none>.
+![Diagnostic de panne](captures/06_diagnostic.png)
 
-Délai de mise à jour : Les rolling updates prennent du temps si les images doivent être téléchargées depuis Internet.
+### 6.8 Nettoyage
 
-Fichier hosts : Sous Windows, le fichier hosts doit être édité en tant qu'administrateur et sauvegardé sans extension.
+![Nettoyage des ressources](captures/07_nettoyage.png)
 
-💻 Auteur
-Nom : [Dabbech]
+## 7. Questions de réflexion
 
-Prénom : [Narjess]
+<details>
+<summary><strong>Étape 0 : Pourquoi isoler un projet dans un namespace ?</strong></summary>
 
-Classe : [M2 Devops]
+Le namespace isole les ressources (Pods, Services, etc.) afin d'éviter les conflits de noms, de faciliter la gestion des droits (RBAC) et de cibler plus simplement les commandes.
+</details>
 
-GitHub : @Narjess805
+<details>
+<summary><strong>Étape 1 : Sur quels nœuds les Pods sont-ils répartis, et qui a pris cette décision ?</strong></summary>
 
-Date : Octobre 2026
+Les Pods sont répartis sur les différents nœuds (master et workers). C'est le **Scheduler** de Kubernetes qui décide, en fonction des ressources disponibles et des contraintes de placement.
+</details>
+
+<details>
+<summary><strong>Étape 2 : Que se passerait-il si les deux Deployments utilisaient exactement les mêmes labels ?</strong></summary>
+
+Les Services ne sauraient plus quels Pods cibler. Le Service `frontend-svc` pourrait envoyer du trafic vers l'API (et inversement), ce qui provoquerait un dysfonctionnement complet.
+</details>
+
+<details>
+<summary><strong>Étape 3 : Quel est le nom DNS complet d'un Service ?</strong></summary>
+
+Le FQDN a la forme `<service>.<namespace>.svc.cluster.local`.
+Exemple : `api-svc.projet-narjess.svc.cluster.local`.
+</details>
+
+<details>
+<summary><strong>Étape 4 : Pourquoi préférer un Ingress à deux Services NodePort ?</strong></summary>
+
+L'Ingress fournit un point d'entrée unique (ports 80/443) avec routage par nom d'hôte et par chemin. Avec des NodePort, il faut ouvrir un port distinct par application, ce qui est moins lisible et moins sécurisé.
+</details>
+
+<details>
+<summary><strong>Étape 5 : Combien de ReplicaSets existent après la mise à jour, et pourquoi l'ancien est-il conservé ?</strong></summary>
+
+Il y a **2 ReplicaSets** : l'ancien (0 réplica) et le nouveau (3 réplicas). L'ancien est conservé pour permettre un rollback rapide avec `kubectl rollout undo` en cas de problème.
+</details>
+
+<details>
+<summary><strong>Étape 6 : Quels symptômes ont mis sur la piste, et quelle est la cause racine ?</strong></summary>
+
+- **Symptômes** : les Pods restent en `ErrImagePull` puis `ImagePullBackOff`.
+- **Cause racine** : le tag d'image indiqué dans le manifeste n'existe pas sur le registre (GHCR), Kubernetes ne peut donc pas télécharger l'image.
+</details>
+
+## 8. Difficultés rencontrées
+
+| Problème | Cause | Solution |
+|----------|-------|----------|
+| Endpoints à `<none>` | Les labels du Service ne correspondent pas à ceux du Deployment | Aligner `selector` du Service et `labels` du Pod template |
+| Rolling update lent | Téléchargement des images depuis Internet | Vérifier la connectivité et préchauffer les images |
+| `hosts` non pris en compte (Windows) | Fichier édité sans droits administrateur ou enregistré avec une extension | Éditer en administrateur et enregistrer sans extension |
+
+## 9. Nettoyage
+
+```bash
+kubectl delete -f manifests/
+kubectl delete namespace projet-narjess
+```
+
+## 10. Auteur
+
+| | |
+|---|---|
+| **Nom** | Dabbech |
+| **Prénom** | Narjess |
+| **Classe** | M2 DevOps |
+| **GitHub** | [@Narjess805](https://github.com/Narjess805) |
+| **Date** | Octobre 2026 |
